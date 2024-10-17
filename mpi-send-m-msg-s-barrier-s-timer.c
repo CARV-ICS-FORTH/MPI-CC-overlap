@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
 		if( rank == 0 ) {
 			res = clock_gettime(CLOCK_MONOTONIC, &t_start );
 			if( res != 0 ) {
-				fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
+				fprintf(stderr, "error: failed at clock_gettime %d\n", __LINE__);
 				return 1;
 			}
 			for(iteration = 0; iteration < num_of_iterations; ++iteration) {
@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
 			}
 			res = clock_gettime(CLOCK_MONOTONIC, &t_end );
 			if( res != 0 ) {
-				fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
+				fprintf(stderr, "error: failed at clock_gettime %d\n", __LINE__);
 				return 1;
 			}
 		} else { // rank = 1

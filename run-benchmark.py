@@ -1,4 +1,4 @@
-import subprocess, os, sys, string, math, os.path, statistics
+import subprocess, os, sys, string, math, os.path, statistics, numpy
 from itertools import repeat
 
 max_msg_size = 4*1024*1024
@@ -16,9 +16,9 @@ def print_bench_banner(output_subbench):
 	print(header)
 
 
-def assess_noise_ssend_single_run():
+def single_benchmark_run(benchmark_name):
 	mpirun_fname = "/home/stahanov/bin/openmpi-5.0.5/bin/mpirun"
-	binary_fname = "mpi-issend-m-msg-s-barrier-s-timer.out"
+	binary_fname = benchmark_name
 	makefile_fname = "/home/stahanov/sources/comp-comm-overlap/MPI-CC-overlap/Makefile"
 
 	cmd = "make all &> /dev/null"
@@ -95,42 +95,71 @@ def assess_noise_ssend_single_run():
 	# print(xfer_times_dict)
 	return xfer_times_dict
 
-def assess_noise_ssend():
-
+def multi_mpiruns(benchmark_name):
 	xfer_times_per_run_dict = {}
-	num_of_samples_per_msg_size = {}
 
 	# repeat mpirun num_of_distinct_mpiruns times. Populate a dictionary of lists
 	for i in range(0,num_of_distinct_mpiruns):
-		xfer_time_per_message = assess_noise_ssend_single_run()
+		xfer_time_per_message = single_benchmark_run(benchmark_name)
 		for key in xfer_time_per_message.keys():
 			if( i == 0 ):
 				xfer_times_per_run_dict[key] = []				
-				num_of_samples_per_msg_size[key] = 1
 			else:
-				num_of_samples_per_msg_size[key] = num_of_samples_per_msg_size[key] + 1
+				pass
 			xfer_times_per_run_dict[key].append( xfer_time_per_message[key] )
 		
-	# print("Number of samples per message size = ", num_of_samples_per_msg_size)
-	#print("Xfer times per message ", xfer_times_per_run_dict);
+	return xfer_times_per_run_dict
 
+# a)assess noise for pt2pt message between a pair of processes. Deviation between min and max xfer times larger than
+# 	noise_level_threshold are reported
+# b)assess presence of outlier values - compare mean and median transfer times over all the num_of_distinct_mpiruns
+#	distinct executions of the benchmark
+def assess_noise_outliers_ssend():
+
+	xfer_times_per_run_dict = multi_mpiruns("mpi-issend-m-msg-s-barrier-s-timer.out")
+
+	
 	# for each message size, calc difference from minimum to maximum transfer time
-	print_bench_banner("assert pt2pt-level noise")
-	for key in num_of_samples_per_msg_size.keys():	
+	print_bench_banner("assess pt2pt-level noise")
+	for key in xfer_times_per_run_dict.keys():	
 		min_xfer_time = min( xfer_times_per_run_dict[key] )
 		max_xfer_time = max( xfer_times_per_run_dict[key] )
 		diff_perc = 100*(max_xfer_time - min_xfer_time) / max_xfer_time
 		if( diff_perc >= noise_level_threshold ):
-			print("MPI issend times for ", key, " bytes may differ by up to ", diff_perc, "%")
+			print("MPI issend times for ", key, " bytes may differ by up to ", numpy.around(diff_perc,decimals=2), "%", 
+				"(min,max) xfer time = (", min_xfer_time, ",", max_xfer_time, ")usecs")
 
-	print_bench_banner("\nassert mean-median deviation")
-	for key in num_of_samples_per_msg_size.keys():	
+
+	print_bench_banner("\nassert presence of outlier values")
+	for key in xfer_times_per_run_dict.keys():	
 		mean_xfer_time = statistics.mean( xfer_times_per_run_dict[key] )
 		median_xfer_time = statistics.median( xfer_times_per_run_dict[key] )
 		diff_perc = 100*(mean_xfer_time - median_xfer_time) / median_xfer_time
 		if( diff_perc >= noise_level_threshold ):
-			printf("Mean transfer time for message size", key, "differs by ", diff_perc, "% from the median")
+			print("Mean transfer time for message size", key, "differs by ", numpy.around(diff_perc,decimals=2), "% from the median")
+	return xfer_times_per_run_dict
 
+# typical latency or sender-side transfer time benchmark consist of multiple mpi_*send and/or mpi_recv calls
+# preceeded by a single barrier call. Time is acquired for the whole block of iterations instead of a per-iteration
+# basis. For the comp-comm overlap though, a barrier is needed before each send-recv exchange to ensure ordering of
+# processes otherwise idle waiting may be mistaken for computation. On the same direction, timing is performed per
+# iteration rather than per-block of sends. This function assess the corresponding intrumentation (barrier + timing)
+# overhead by comparing the transfer times for all messages for two different mpi_isend benchmarks
+def assess_multi_barrier_timer_effect(xfer_times_s_timer_s_barrier):
+	print_bench_banner("assess instrumentation overhead")
+	xfer_times_mtimer_mbarrier = multi_mpiruns("/home/stahanov/sources/comp-comm-overlap/MPI-CC-overlap/mpi-issend-m-msg-m-barrier-m-timer.out")
+	for msg_size in xfer_times_s_timer_s_barrier.keys():
+
+		avg_xfer_time_s_timer_s_barrier = statistics.mean( xfer_times_s_timer_s_barrier[msg_size] )
+		avg_xfer_time_m_timer_m_barrier = statistics.mean( xfer_times_mtimer_mbarrier[msg_size] )
+		print(avg_xfer_time_s_timer_s_barrier, avg_xfer_time_m_timer_m_barrier)
+		diff = avg_xfer_time_m_timer_m_barrier - avg_xfer_time_s_timer_s_barrier
+		abs_diff = abs(diff)/avg_xfer_time_s_timer_s_barrier
+		
+		if( abs_diff >= 5):
+			print("MPI_issend communication time for message size", msg_size, "varu by ", numpy.around(diff_perc,decimals=2), "% when multipe timers and barriers are used")
+			print("Single-timer-barrier = ", avg_xfer_time_s_timer_s_barrier, "multi-timer-barrier = ", avg_xfer_time_m_timer_m_barrier)
 
 # main
-assess_noise_ssend()
+xfer_times_per_run_dict = assess_noise_outliers_ssend()
+assess_multi_barrier_timer_effect(xfer_times_per_run_dict)
