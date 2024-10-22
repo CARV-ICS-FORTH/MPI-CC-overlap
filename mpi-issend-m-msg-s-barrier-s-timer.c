@@ -4,21 +4,31 @@
 #include <time.h>
 
 #define call_mpi( func, ...) { 								\
-	res = func(__VA_ARGS__);  								\
-	if( res != MPI_SUCCESS ) { 								\
+	int mpi_call_res;										\
+	mpi_call_res = func(__VA_ARGS__);						\
+	if( mpi_call_res != MPI_SUCCESS ) {						\
 		fprintf(stderr, "error on line[%d]\n", __LINE__ );	\
 		exit(1); 											\
 	}														\
  } 
 #define MAX_MSG_SIZE 4194304 // 4 MB
 
-void cbarrier(void) {
-	MPI_Barrier(MPI_COMM_WORLD);
+void cbarrier(int rank) {
+	//MPI_Barrier(MPI_COMM_WORLD);
+	if( rank == 0 ) {
+		call_mpi(MPI_Send, NULL, 0, MPI_INT, 1, 1234, MPI_COMM_WORLD);
+		call_mpi(MPI_Recv, NULL, 0, MPI_INT, 1, 1234, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	} else {
+		call_mpi(MPI_Recv, NULL, 0, MPI_INT, 0, 1234, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		call_mpi(MPI_Send, NULL, 0, MPI_INT, 0, 1234, MPI_COMM_WORLD);
+		
+	}
+	return ;
 }
 
 int main(int argc, char** argv) {
 
-	int res, size, proc_name_len, rank, msg_size, dest, tag, num_of_iterations, iteration;
+	int res, size, proc_name_len, rank, msg_size, dest, tag, num_of_iterations, iteration, warmup_iterations;
 	char hostname[MPI_MAX_PROCESSOR_NAME];
 	char* msg_buf;
 	MPI_Status recv_status;
@@ -27,6 +37,7 @@ int main(int argc, char** argv) {
 	double xfer_time_usecs;
 
 	num_of_iterations = 10000;
+	warmup_iterations = 100;
 	msg_buf = (char*)malloc( sizeof(char)*MAX_MSG_SIZE );
 	if( msg_buf == NULL ) {
 		fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
@@ -41,7 +52,7 @@ int main(int argc, char** argv) {
 
 	tag = 81;
 	for(msg_size = 0; msg_size <= MAX_MSG_SIZE; msg_size = (msg_size ? msg_size*2 : 1) )  {
-		cbarrier();
+		cbarrier(rank);
 		if( rank == 0 ) {
 			res = clock_gettime(CLOCK_MONOTONIC, &t_start );
 			if( res != 0 ) {
