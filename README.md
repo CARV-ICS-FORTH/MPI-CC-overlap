@@ -1,7 +1,7 @@
 # MPI-CC-overlap
 MPI-CC-overlap is a tool that focuses on assessing the overlap of computation and communication for the case of MPI
-non-blocking primitives. Before the estimating average computation-communication overlap for each message size it
-performs several checks to assess noise and outliers in the actual send message times. More precisely:
+non-blocking primitives. Before estimating average computation-communication overlap for each message size it
+performs several checks to assess noise and outliers in the actual send message times. Specifically:
 ## benchmark `mpi-issend-m-msg-s-barrier-s-timer.out`
 	- Sender side
 	- Extracts pure communication time (issend+wait) for a specific pair of processes and various message sizes
@@ -29,49 +29,42 @@ performs several checks to assess noise and outliers in the actual send message 
 
 # Output
 - Normal ratio values lie in [0,1] where higher is better
-- There are a few special cases that may appear and deviate from the normal output produced by the benchmark
+- There are a few special cases that may appear and deviate from the normal output produced by the benchmark:
 	1. In the computation communication overlap assesmnent benchmark, computation is inserted in between issend and
 		the corresponding wait calls. The amount of computation is gradually increased (similar to the approach in [1]).
-		The amount of computation inserted is estimated as a fraction of the pure communication time. If though,
+		The amount of computation inserted is estimated as a fraction of the pure communication time. However, if the
 		communication time for a specific pair of messages is finer than the actual time to call `clock_gettime` the
 		following wanring will be printed: `error: inserted computation (tc) finer than timer's accuracy (tm)`. The only
-		expected scenario for this case is a costly implementation of `clock_gettime`
-	2. Communication ratio = 0: if the first amount of computation inserted already inflates communication time above
+		expected scenario for this case is a costly implementation of `clock_gettime`.
+	2. Communication ratio = 0: If the first amount of computation inserted already inflates communication time above
 		a threshold, the benchmark assumes that it is not possible to overlap computation with communication and returns
-		a ratio of 0
+		a ratio of 0.
 	3. There is an unexpected case where the communication time for a specific message when computation is performed in
 		parallel may appear lower than the pure communication time. This might be due to increased noise when acquiring
 		the pure communication time. Message:
-		`wanring: communication time with interfering computation for msg size = m (tm) lower than pure communication time (t0). Inserted computation duration=tc`
-	4. Case of nevative ratio: the effect of inserting communication of tc usecs in between the issend and wait calls might
-		have a larger than exepcted result in the communication time. Not a trivial case and requires debugging
+		`warning: communication time with interfering computation for msg size = m (tm) lower than pure communication time (t0). Inserted computation duration=tc`
+	4. Case of negative ratio: The effect of inserting communication of tc usecs in between the issend and wait calls might
+		have a larger than expected result in the communication time. Not a trivial case and requires debugging.
 
 # Configuring & running
-- For running the benchmark there are two pre-requisits
-	1. An mpi implementation
-	2. Specifying parameters in the config.in file
+- For running the benchmark there are two pre-requisites:
+	1. An installation of MPI
+	2. Specification of parameters in the **config.in** file:
 		- mpi_path: the path where mpi is installed. e.g. /usr/bin/openmpi-x/
-		- num_of_mpiruns: the number of different mpiruns used to derive average message send and ratio values. More
-			distinct mpiruns allow to limite system noise effects
-		- num_of_iterations: number of iterations within each different mpi benchmark. Large number of iterations (e.g. 10000)
+		- num_of_mpiruns: the number of different MPI runs used to derive average message send and ratio values. More
+			distinct MPI runs allow to limite system noise effects
+		- num_of_iterations: number of iterations within each different MPI benchmark. Large number of iterations (e.g. 10000)
 			are more suitable to avoid any optimized paths for a few message exchanges. Moreover, effect of noise and
 			outliers are masked out
-		- max_msg_size: the maximum message size tried in posted MPI_Issends. Currently hardcoded to 4MB
-		- noise_threshold: controls the results that are output by steps a-c of the benchmark. todo; add more
+		- max_msg_size: the maximum message size tried in posted MPI_Issend. Currently hardcoded to 4MB
+		- noise_threshold: controls the results that are output by steps a-c of the benchmark. 
 	3. python3
 - For running:
 	- ` python3 run-benchmark.py`
 
-
-
 # Related studies
-1.M. J. Rashti and A. Afsahi, "Assessing the Ability of Computation/Communication Overlap and Communication Progress in Modern Interconnects," 15th Annual IEEE Symposium on High-Performance Interconnects (HOTI 2007), Stanford, CA, USA, 2007, pp. 117-124, doi: 10.1109/HOTI.2007.12
+1. M. J. Rashti and A. Afsahi, "Assessing the Ability of Computation/Communication Overlap and Communication Progress in Modern Interconnects," 15th Annual IEEE Symposium on High-Performance Interconnects (HOTI 2007), Stanford, CA, USA, 2007, pp. 117-124, doi: 10.1109/HOTI.2007.12
 2. A. Denis and F. Trahay, "MPI Overlap: Benchmark and Analysis," 2016 45th International Conference on Parallel Processing (ICPP), Philadelphia, PA, USA, 2016, pp. 258-267, doi: 10.1109/ICPP.2016.37
 
 # Funding Support
-We thankfully acknowledge the support of the European Commission and the
-Greek General Secretariat for Research and Innovation under the EuroHPC
-Programme through the SPACE Centre of Excellence project (Grant Agreement No 101093441).
-National contributions from the involved state members (including the Greek
-General Secretariat for Research and Innovation) match the EuroHPC
-funding.
+We thankfully acknowledge the support of the European Commission and the Greek General Secretariat for Research and Innovation under the EuroHPC Programme through the SPACE Centre of Excellence project (Grant Agreement No 101093441). National contributions from the involved state members (including the Greek General Secretariat for Research and Innovation) match the EuroHPC funding.
