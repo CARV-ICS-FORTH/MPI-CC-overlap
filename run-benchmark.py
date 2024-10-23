@@ -7,7 +7,7 @@ noise_level_threshold = 5 # 5%
 
 def read_and_parse_config():
 
-	input_params = {'mpi_path':None, 'num_of_mpiruns':None, 'num_of_iterations':None, 'max_msg_size':None, 'noise_threshold':None}
+	input_params = {'mpi_path':None, 'num_of_mpiruns':None, 'num_of_iterations':None, 'max_msg_size':None, 'noise_threshold':None, 'mpirun_args':None}
 	# print(input_params)
 	
 	input_params_keys = input_params.keys()
@@ -28,7 +28,7 @@ def read_and_parse_config():
 			param_tokens = param_entry.split("=")
 			if( len(param_tokens) == 2):
 				if( param_tokens[0] in input_params_keys ):
-					input_params[ param_tokens[0] ] = param_tokens[1]
+					input_params[ param_tokens[0] ] = param_tokens[1].replace("\"", "")
 				else:
 					print("warning:", config_fname, ": parameter ", param_tokens[0], "not recognized: ignored")
 			else:
@@ -52,7 +52,7 @@ def read_and_parse_config():
 				print("error: input configuration parameter ", key, "requires integer values")
 				sys.exit(1)
 
-
+	# print(input_params)
 	return input_params
 
 
@@ -68,7 +68,7 @@ def print_bench_banner(output_subbench):
 	print(header)
 
 
-def single_benchmark_run(benchmark_name):
+def single_benchmark_run(input_params, benchmark_name):
 	mpirun_fname = "/home/stahanov/bin/openmpi-5.0.5/bin/mpirun"
 	binary_fname = benchmark_name
 	makefile_fname = os.getcwd() + "/Makefile"
@@ -89,7 +89,8 @@ def single_benchmark_run(benchmark_name):
 	else:
 		pass # no file missing
 
-	cmd = mpirun_fname + " -np 2 " + binary_fname
+	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname
+
 	try:
 		p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	except OSError:
@@ -147,7 +148,7 @@ def single_benchmark_run(benchmark_name):
 	# print(xfer_times_dict)
 	return xfer_times_dict
 
-def mpi_comm_comp_overlap_multiple_mpiruns(benchmark_name, msg_size, avg_xfer_time, max_xfer_time):
+def mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_size, avg_xfer_time, max_xfer_time):
 	mpirun_fname = "/home/stahanov/bin/openmpi-5.0.5/bin/mpirun"
 	binary_fname = benchmark_name
 	makefile_fname = os.getcwd() + "/Makefile"
@@ -171,7 +172,8 @@ def mpi_comm_comp_overlap_multiple_mpiruns(benchmark_name, msg_size, avg_xfer_ti
 	else:
 		pass # no file missing
 
-	cmd = mpirun_fname + " -np 2 " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
+	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
+	# cmd = mpirun_fname + " -np 2 " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
 	# print(cmd)
 	
 	try:
@@ -235,7 +237,7 @@ def multi_mpiruns(input_params, benchmark_name):
 
 	# repeat mpirun num_of_distinct_mpiruns times. Populate a dictionary of lists
 	for i in range(0,int(input_params["num_of_mpiruns"]) ):
-		xfer_time_per_message = single_benchmark_run(benchmark_name)
+		xfer_time_per_message = single_benchmark_run(input_params, benchmark_name)
 		for key in xfer_time_per_message.keys():
 			if( i == 0 ):
 				xfer_times_per_run_dict[key] = []				
@@ -310,7 +312,7 @@ def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
 
 		for mpirun_i in range(0, int(input_params["num_of_mpiruns"]) ):
 			benchmark_name = os.getcwd() + "/mpi-comp-comm-overlap-sender-side.out"
-			ratio = mpi_comm_comp_overlap_multiple_mpiruns(benchmark_name, msg_size, avg_xfer_time, max_xfer_time)
+			ratio = mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_size, avg_xfer_time, max_xfer_time)
 			avg_overlap_ratio = avg_overlap_ratio + ratio
 			# print("For message size=", msg_size, " ratio=", ratio)
 
