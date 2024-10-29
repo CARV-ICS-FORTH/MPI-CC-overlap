@@ -2,14 +2,12 @@ import subprocess, os, sys, string, math, os.path, statistics, numpy
 from itertools import repeat
 
 max_msg_size = 4*1024*1024
-num_of_distinct_mpiruns = 4
-noise_level_threshold = 5 # 5%
 
 def read_and_parse_config():
 
 	input_params = {'mpi_path':None, 'num_of_mpiruns':None, 'num_of_iterations':None, 'max_msg_size':None, 'noise_threshold':None, 'mpirun_args':None}
 	# print(input_params)
-	
+
 	input_params_keys = input_params.keys()
 	config_fname = os.getcwd() + "/config.in"
 	if( os.path.exists(config_fname) == False ):
@@ -19,12 +17,14 @@ def read_and_parse_config():
 	config_file = open(config_fname, 'r')
 	for line in config_file:
 		line = line.rstrip()
-
 		comment_at = line.find('#')
 		if( comment_at == 0):
 			pass # ignore comments
 		else:
-			param_entry = line[0:comment_at].strip()
+			if( comment_at > 0 ):
+				param_entry = line[0:comment_at].strip()
+			else:
+				param_entry = line.strip()
 			param_tokens = param_entry.split("=")
 			if( len(param_tokens) == 2):
 				if( param_tokens[0] in input_params_keys ):
@@ -32,10 +32,14 @@ def read_and_parse_config():
 				else:
 					print("warning:", config_fname, ": parameter ", param_tokens[0], "not recognized: ignored")
 			else:
-				print("warning:", config_fname, ": malformed input parameter line ", param_entry, ": ignored")
+				if( param_tokens[0] == "mpirun_args" ):
+					mpirun_arg_tokens = param_entry.split("\"")
+					input_params[ param_tokens[0] ] = mpirun_arg_tokens[1]
+				else:
+					print("warning:", config_fname, ": malformed input parameter line ", param_entry, ": ignored")
 
 	none_values = all(input_params.values())
-	
+
 	# check that all required parameters have been specified
 	for key in input_params_keys:
 		if input_params[key] == None:
@@ -52,7 +56,32 @@ def read_and_parse_config():
 				print("error: input configuration parameter ", key, "requires integer values")
 				sys.exit(1)
 
-	# print(input_params)
+	#print(input_params)
+	# make binaries
+	makefile_fname = os.getcwd() + "/Makefile"
+
+	if( os.path.exists(makefile_fname) == False ):
+		print("File:",  makefile_fname, "not found")
+		sys.exit(1)
+	cmd = "make all mpicc=" + input_params["mpi_path"] + "bin/mpicc "
+	try:
+		p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	except OSError:
+		print("error: popen: not existing file", cmd)
+		sys.exit(1)
+	except ValueError:
+		print("error: popen: invalid input arguments", cmd)
+		sys.exit(1)
+
+	p.wait()
+	p_ret_code = p.returncode
+	if p_ret_code == None:
+		print("popen: ", cmd, "not terminated yet")
+	elif p_ret_code <0:
+		print("popen: ", cmd, "terminated with signal ", p_ret_code)
+	else:
+		pass
+
 	return input_params
 
 
@@ -61,7 +90,6 @@ def read_and_parse_config():
 def print_bench_banner(output_subbench):
 	output_subbench = output_subbench.strip()
 	llen = len("MPI-CC-overlap," ) + len(output_subbench) + 2*len("/*** ");
-	
 	header = "/" + "*"*llen + "/"
 	print(header)
 	print("/***", "MPI-CC-overlap, ", output_subbench, "***/" )
@@ -69,13 +97,8 @@ def print_bench_banner(output_subbench):
 
 
 def single_benchmark_run(input_params, benchmark_name):
-	mpirun_fname = "/home/stahanov/bin/openmpi-5.0.5/bin/mpirun"
+	mpirun_fname = input_params["mpi_path"] + "/bin/mpirun"
 	binary_fname = benchmark_name
-	makefile_fname = os.getcwd() + "/Makefile"
-
-	cmd = "make all &> /dev/null"
-	subprocess.call(['make', 'all'],  stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-	
 
 	if( os.path.exists(mpirun_fname) == False ):
 		print("File:",  mpirun_fname, "not found")
@@ -83,13 +106,11 @@ def single_benchmark_run(input_params, benchmark_name):
 	elif( os.path.exists(binary_fname) == False ):
 		print("File:",  binary_fname, "not found")
 		sys.exit(1)
-	elif( os.path.exists(makefile_fname) == False ):
-		print("File:",  makefile_fname, "not found")
-		sys.exit(1)
 	else:
 		pass # no file missing
 
 	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname
+	#print(cmd)
 
 	try:
 		p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -127,7 +148,6 @@ def single_benchmark_run(input_params, benchmark_name):
 		values_found = 0
 		
 		for token in tokens:
-
 			ret = token.find("size")
 			if( ret == 0 ):
 				msg_size_tokens = token.split("=")
@@ -149,16 +169,8 @@ def single_benchmark_run(input_params, benchmark_name):
 	return xfer_times_dict
 
 def mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_size, avg_xfer_time, max_xfer_time):
-	mpirun_fname = "/home/stahanov/bin/openmpi-5.0.5/bin/mpirun"
+	mpirun_fname = input_params["mpi_path"] + "/bin/mpirun"
 	binary_fname = benchmark_name
-	makefile_fname = os.getcwd() + "/Makefile"
-
-
-	cmd = "make all &> /dev/null"
-	if( subprocess.call(['make', 'all'],  stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT) != 0 ):
-		print("compilation of ", benchmark_name, " failed")
-		sys.exit(1)
-	
 
 	if( os.path.exists(mpirun_fname) == False ):
 		print("File:",  mpirun_fname, "not found")
@@ -166,15 +178,12 @@ def mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_siz
 	elif( os.path.exists(binary_fname) == False ):
 		print("File:",  binary_fname, "not found")
 		sys.exit(1)
-	elif( os.path.exists(makefile_fname) == False ):
-		print("File:",  makefile_fname, "not found")
-		sys.exit(1)
 	else:
 		pass # no file missing
 
 	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
 	# cmd = mpirun_fname + " -np 2 " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
-	# print(cmd)
+	#print(cmd)
 	
 	try:
 		p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -184,15 +193,18 @@ def mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_siz
 	except ValueError:
 		print("error: popen: invalid input arguments", cmd)
 		sys.exit(1)
+
 	(p_stdout, p_stderr) = p.communicate()
 	p_ret_code = p.returncode
 	if p_ret_code == None:
 		print("popen: ", cmd, "not terminated yet")
 	elif p_ret_code <0:
 		print("popen: ", cmd, "terminated with signal ", p_ret_code)
-	else:
-		pass
-		#print(p_stderr)
+		sys.exit(1)
+	elif p_ret_code >0:
+		print("popen: ", cmd, "exited with error or warning ", p_ret_code)
+		print(p_stderr)
+		sys.exit(1)
 
 	p_stdout_entries = p_stdout.splitlines()
 	p_stderr_entries = p_stderr.splitlines()
@@ -200,7 +212,10 @@ def mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_siz
 	for entry in p_stdout_entries:
 		
 		if( entry.decode('ascii').find("warning") >= 0):
-			print("Mpi bench output: ", entry.decode('ascii') )	
+			print("Mpi bench output: ", entry.decode('ascii') )
+		else:
+			pass
+			#print("Mpi bench output: ", entry.decode('ascii') )
 		tokens = entry.decode('ascii').split()
 		
 		if( len(tokens) != 2):
@@ -255,7 +270,6 @@ def assess_noise_outliers_ssend(input_params):
 
 	xfer_times_per_run_dict = multi_mpiruns(input_params, "mpi-issend-m-msg-s-barrier-s-timer.out")
 
-	
 	# for each message size, calc difference from minimum to maximum transfer time
 	print_bench_banner("assess pt2pt-level noise")
 	for key in xfer_times_per_run_dict.keys():	
@@ -300,6 +314,7 @@ def assess_multi_barrier_timer_effect(input_params, xfer_times_s_timer_s_barrier
 def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
 
 	print_bench_banner("\nComp-comm overlap for various message sizes")
+	num_of_distinct_mpiruns = int(input_params["num_of_mpiruns"] )
 	for msg_size in xfer_times_per_run_dict.keys():
 		# print("\tMsg size considered:", msg_size)
 		avg_xfer_time = statistics.mean(xfer_times_per_run_dict[msg_size])
@@ -307,17 +322,17 @@ def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
 		avg_overlap_ratio = 0
 		
 
-		# if( msg_size == 2):
+		#if( msg_size == 16384):
 		# 	print(msg_size, avg_xfer_time, max_xfer_time);
 
-		for mpirun_i in range(0, int(input_params["num_of_mpiruns"]) ):
+		for mpirun_i in range(0, num_of_distinct_mpiruns) :
 			benchmark_name = os.getcwd() + "/mpi-comp-comm-overlap-sender-side.out"
 			ratio = mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_size, avg_xfer_time, max_xfer_time)
+			
 			avg_overlap_ratio = avg_overlap_ratio + ratio
-			# print("For message size=", msg_size, " ratio=", ratio)
 
 		avg_overlap_ratio = avg_overlap_ratio/num_of_distinct_mpiruns
-		print("For message size=", msg_size, " average comp-comm overlap", avg_overlap_ratio)
+		print("Msg size(bytes)=", msg_size, " average comp-comm overlap ratio", numpy.around(avg_overlap_ratio,decimals=2) )
 		
 
 # main
