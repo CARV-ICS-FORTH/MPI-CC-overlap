@@ -40,11 +40,9 @@ performs several checks to assess noise and outliers in the actual send message 
 		a threshold, the benchmark assumes that it is not possible to overlap computation with communication and returns
 		a ratio of 0.
 	3. There is an unexpected case where the communication time for a specific message when computation is performed in
-		parallel may appear lower than the pure communication time. This might be due to increased noise when acquiring
-		the pure communication time. Message:
-		`warning: communication time with interfering computation for msg size = m (tm) lower than pure communication time (t0). Inserted computation duration=tc`
-	4. Case of negative ratio: The effect of inserting communication of tc usecs in between the issend and wait calls might
-		have a larger than expected result in the communication time. Not a trivial case and requires debugging.
+		parallel may appear lower than the minimum of pure communication and computation time. This might be due to
+		increased noise when acquiring the pure communication or computation time. The output is a ratio value larger than
+		one. Such values can be interpreted as perfect overlap
 
 # Configuring & running
 - For running the benchmark there are two pre-requisites:

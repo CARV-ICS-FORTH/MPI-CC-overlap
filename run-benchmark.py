@@ -75,10 +75,16 @@ def read_and_parse_config():
 
 	p.wait()
 	p_ret_code = p.returncode
+	(p_stdout, p_stderr) = p.communicate()
+	p_stderr_entries = p_stderr.splitlines()
 	if p_ret_code == None:
 		print("popen: ", cmd, "not terminated yet")
 	elif p_ret_code <0:
 		print("popen: ", cmd, "terminated with signal ", p_ret_code)
+	elif p_ret_code >0:
+		print("popen: ", cmd, "exits with error code=", p_ret_code)
+		for entry in p_stderr_entries:
+			print( entry.decode() )
 	else:
 		pass
 
@@ -268,27 +274,27 @@ def multi_mpiruns(input_params, benchmark_name):
 #	distinct executions of the benchmark
 def assess_noise_outliers_ssend(input_params):
 
-	xfer_times_per_run_dict = multi_mpiruns(input_params, "mpi-issend-m-msg-s-barrier-s-timer.out")
+	tcomm_pure_dict = multi_mpiruns(input_params, "mpi-isend-m-msg-s-barrier-s-timer.out")
 
 	# for each message size, calc difference from minimum to maximum transfer time
 	print_bench_banner("assess pt2pt-level noise")
-	for key in xfer_times_per_run_dict.keys():	
-		min_xfer_time = min( xfer_times_per_run_dict[key] )
-		max_xfer_time = max( xfer_times_per_run_dict[key] )
+	for key in tcomm_pure_dict.keys():	
+		min_xfer_time = min( tcomm_pure_dict[key] )
+		max_xfer_time = max( tcomm_pure_dict[key] )
 		diff_perc = 100*(max_xfer_time - min_xfer_time) / max_xfer_time
 		if( diff_perc >= float(input_params["noise_threshold"])*100 ):
-			print("MPI issend times for ", key, " bytes may differ by up to ", numpy.around(diff_perc,decimals=2), "%", 
+			print("MPI isend times for ", key, " bytes may differ by up to ", numpy.around(diff_perc,decimals=2), "%", 
 				"(min,max) xfer time = (", min_xfer_time, ",", max_xfer_time, ")usecs")
 
 
 	print_bench_banner("\nassert presence of outlier values")
-	for key in xfer_times_per_run_dict.keys():	
-		mean_xfer_time = statistics.mean( xfer_times_per_run_dict[key] )
-		median_xfer_time = statistics.median( xfer_times_per_run_dict[key] )
+	for key in tcomm_pure_dict.keys():	
+		mean_xfer_time = statistics.mean( tcomm_pure_dict[key] )
+		median_xfer_time = statistics.median( tcomm_pure_dict[key] )
 		diff_perc = 100*(mean_xfer_time - median_xfer_time) / median_xfer_time
 		if( diff_perc >= float(input_params["noise_threshold"])*100 ):
 			print("Mean transfer time for message size", key, "differs by ", numpy.around(diff_perc,decimals=2), "% from the median")
-	return xfer_times_per_run_dict
+	return tcomm_pure_dict
 
 # typical latency or sender-side transfer time benchmark consist of multiple mpi_*send and/or mpi_recv calls
 # preceeded by a single barrier call. Time is acquired for the whole block of iterations instead of a per-iteration
@@ -298,7 +304,7 @@ def assess_noise_outliers_ssend(input_params):
 # overhead by comparing the transfer times for all messages for two different mpi_isend benchmarks
 def assess_multi_barrier_timer_effect(input_params, xfer_times_s_timer_s_barrier):
 	print_bench_banner("assess instrumentation overhead")
-	benchmark_name=os.getcwd() + "/mpi-issend-m-msg-m-barrier-m-timer.out"
+	benchmark_name=os.getcwd() + "/mpi-isend-m-msg-m-barrier-m-timer.out"
 	xfer_times_mtimer_mbarrier = multi_mpiruns(input_params, benchmark_name)
 	for msg_size in xfer_times_s_timer_s_barrier.keys():
 
@@ -308,7 +314,7 @@ def assess_multi_barrier_timer_effect(input_params, xfer_times_s_timer_s_barrier
 		abs_diff = abs(diff)/avg_xfer_time_s_timer_s_barrier
 		
 		if( abs_diff >= float(input_params["noise_threshold"]) ):
-			print("MPI_issend communication time for message size", msg_size, "vary by ", numpy.around(100*abs_diff,decimals=2), "% when multipe timers and barriers are used")
+			print("MPI_isend communication time for message size", msg_size, "vary by ", numpy.around(100*abs_diff,decimals=2), "% when multipe timers and barriers are used")
 			# print("\tSingle-timer-barrier = ", avg_xfer_time_s_timer_s_barrier, "multi-timer-barrier = ", avg_xfer_time_m_timer_m_barrier)
 
 def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
@@ -337,6 +343,6 @@ def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
 
 # main
 input_params=read_and_parse_config()
-xfer_times_per_run_dict = assess_noise_outliers_ssend(input_params)
-assess_multi_barrier_timer_effect(input_params, xfer_times_per_run_dict)
-comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict)
+pur_comm_times_per_run_dict = assess_noise_outliers_ssend(input_params)
+assess_multi_barrier_timer_effect(input_params, pur_comm_times_per_run_dict)
+comp_comm_overlap_ratio_benchmark(input_params, pur_comm_times_per_run_dict)

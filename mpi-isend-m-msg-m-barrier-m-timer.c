@@ -14,7 +14,8 @@
 #define MAX_MSG_SIZE 4194304 // 4 MB
 
 void cbarrier(int rank) {
-	//MPI_Barrier(MPI_COMM_WORLD);
+	// MPI_Barrier(MPI_COMM_WORLD);
+
 	if( rank == 0 ) {
 		call_mpi(MPI_Send, NULL, 0, MPI_INT, 1, 1234, MPI_COMM_WORLD);
 		call_mpi(MPI_Recv, NULL, 0, MPI_INT, 1, 1234, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -32,16 +33,20 @@ int main(int argc, char** argv) {
 	char hostname[MPI_MAX_PROCESSOR_NAME];
 	char* msg_buf;
 	MPI_Status recv_status;
-	MPI_Request issend_request;
 	struct timespec t_start, t_end;
 	double xfer_time_usecs;
+	MPI_Request issend_request;
 
 	num_of_iterations = 10000;
 	warmup_iterations = 100;
+	xfer_time_usecs = 0.0;
 	msg_buf = (char*)malloc( sizeof(char)*MAX_MSG_SIZE );
 	if( msg_buf == NULL ) {
 		fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
 		return 1;
+	}
+	for(iteration=0; iteration<MAX_MSG_SIZE; ++iteration) {
+		msg_buf[iteration] = 0;
 	}
 	res = MPI_Init(&argc, &argv);
 	call_mpi(MPI_Comm_size, MPI_COMM_WORLD, &size ) ;
@@ -50,33 +55,45 @@ int main(int argc, char** argv) {
 
 	printf("Rank [%d/%d] runs on [%s]\n", rank, size, hostname);
 
-	tag = 81;
+	tag = 71023;
 	for(msg_size = 0; msg_size <= MAX_MSG_SIZE; msg_size = (msg_size ? msg_size*2 : 1) )  {
-		cbarrier(rank);
-		if( rank == 0 ) {
-			res = clock_gettime(CLOCK_MONOTONIC, &t_start );
-			if( res != 0 ) {
-				fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
-				return 1;
-			}
-			for(iteration = 0; iteration < num_of_iterations; ++iteration) {
-				call_mpi(MPI_Issend, msg_buf, msg_size, MPI_CHAR, 1, tag, MPI_COMM_WORLD, &issend_request );
+		
+		// warmup runs
+		for(iteration = 0; iteration < warmup_iterations; ++iteration) {
+			if( rank == 0 ) {
+				call_mpi(MPI_Isend, msg_buf, msg_size, MPI_CHAR, 1, tag, MPI_COMM_WORLD, &issend_request );
 				call_mpi(MPI_Wait, &issend_request, MPI_STATUS_IGNORE);
-
-			}
-			res = clock_gettime(CLOCK_MONOTONIC, &t_end );
-			if( res != 0 ) {
-				fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
-				return 1;
-			}
-		} else { // rank = 1
-			for(iteration = 0; iteration < num_of_iterations; ++iteration) {
+			} else {
 				call_mpi(MPI_Recv, msg_buf, msg_size, MPI_CHAR, 0, tag, MPI_COMM_WORLD, &recv_status);
 			}
 		}
-		xfer_time_usecs = (t_end.tv_sec - t_start.tv_sec)*1000000.0 + (t_end.tv_nsec - t_start.tv_nsec)/1000.0;
-		xfer_time_usecs = xfer_time_usecs/num_of_iterations;
+
+		// actual runs
 		if( rank == 0 ) {
+			
+			for(iteration = 0; iteration < num_of_iterations; ++iteration) {
+
+				cbarrier(rank);
+				res = clock_gettime(CLOCK_MONOTONIC, &t_start );
+				call_mpi(MPI_Isend, msg_buf, msg_size, MPI_CHAR, 1, tag, MPI_COMM_WORLD, &issend_request);
+				call_mpi(MPI_Wait, &issend_request, MPI_STATUS_IGNORE);
+				res = clock_gettime(CLOCK_MONOTONIC, &t_end );
+				xfer_time_usecs = xfer_time_usecs + (t_end.tv_sec - t_start.tv_sec)*1000000.0 + (t_end.tv_nsec - t_start.tv_nsec)/1000.0;
+
+			}
+			
+			
+		} else { // rank = 1
+
+			for(iteration = 0; iteration < num_of_iterations; ++iteration) {
+				cbarrier(rank);
+				call_mpi(MPI_Recv, msg_buf, msg_size, MPI_CHAR, 0, tag, MPI_COMM_WORLD, &recv_status);
+			}
+
+		}
+		
+		xfer_time_usecs = xfer_time_usecs/num_of_iterations;
+		if( rank == 0) {
 			printf("[%s]: avg xfer time: size=%d iters=[%d] avg_latency=%lf usecs\n", argv[0], msg_size, num_of_iterations, xfer_time_usecs);
 		}
 	}

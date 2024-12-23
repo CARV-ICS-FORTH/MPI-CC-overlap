@@ -4,5 +4,5 @@ num_of_mpiruns=3								# num of different mpiruns per benchmark
 num_of_iterations=1000							# num of iterations within each benchmark per message size tried
 max_msg_size=4194304							# maximum message size in bytes
 noise_threshold=0.05							# deviation between min and max across different mpiruns not reporeted while it is below this threshold
-mpirun_args="-np 2"
+mpirun_args="-np 2 --map-by hwthread"
 #mpirun_args="--mca pml ucx -x UCX_NET_DEVICES=mlx5_0:1 --mca btl ^vader,tcp,openib -np 2"
