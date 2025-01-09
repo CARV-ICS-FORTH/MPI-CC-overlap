@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <time.h>
+#include <math.h>
 
 #define call_mpi( func, ...) { 								\
 	int mpi_call_res;										\
@@ -12,7 +13,25 @@
 	}														\
  } 
 #define MAX_MSG_SIZE 4194304 // 4 MB
+double calculateMean(double data[], int n) {
+    double sum = 0.0;
+    for (int i = 0; i < n; i++) {
+        sum += data[i];
+    }
+    return sum / n;
+}
 
+double calculateStandardDeviation(double data[], int n) {
+    double mean = calculateMean(data, n);
+    double variance = 0.0;
+
+    for (int i = 0; i < n; i++) {
+        variance += pow(data[i] - mean, 2);
+    }
+    variance /= n; 
+
+    return sqrt(variance);
+}
 void cbarrier(int rank) {
 	// MPI_Barrier(MPI_COMM_WORLD);
 
@@ -35,12 +54,26 @@ int main(int argc, char** argv) {
 	MPI_Status recv_status;
 	struct timespec t_start, t_end;
 	double xfer_time_usecs;
+	double * xfer_times;
+	double min_latency = 10000000.0;
+	double max_latency = 0.0;
+	double deviation;
 	MPI_Request issend_request;
 
-	num_of_iterations = 10000;
+	if (argc >= 2)
+		num_of_iterations = atoi(argv[1]);
+	else
+		num_of_iterations = 1000;
+
+	if(num_of_iterations < 0){
+		fprintf(stderr, "error: invalid input num_of_iterations  = [%s] . Default value (1000) will be used\n", argv[1] );
+		num_of_iterations = 1000;
+	}
 	warmup_iterations = 100;
 	xfer_time_usecs = 0.0;
 	msg_buf = (char*)malloc( sizeof(char)*MAX_MSG_SIZE );
+	xfer_times = malloc(sizeof(double) * num_of_iterations);
+
 	if( msg_buf == NULL ) {
 		fprintf(stderr, "error: failed to malloc at %d\n", __LINE__);
 		return 1;
@@ -79,9 +112,13 @@ int main(int argc, char** argv) {
 				call_mpi(MPI_Wait, &issend_request, MPI_STATUS_IGNORE);
 				res = clock_gettime(CLOCK_MONOTONIC, &t_end );
 				xfer_time_usecs = xfer_time_usecs + (t_end.tv_sec - t_start.tv_sec)*1000000.0 + (t_end.tv_nsec - t_start.tv_nsec)/1000.0;
-
+				xfer_times[iteration] =  (t_end.tv_sec - t_start.tv_sec)*1000000.0 + (t_end.tv_nsec - t_start.tv_nsec)/1000.0;
+				if (xfer_times[iteration] > max_latency)
+					max_latency = xfer_times[iteration];
+				if (xfer_times[iteration] < min_latency)
+					min_latency = xfer_times[iteration];
 			}
-			
+			deviation = calculateStandardDeviation(xfer_times, num_of_iterations);
 			
 		} else { // rank = 1
 
@@ -94,7 +131,8 @@ int main(int argc, char** argv) {
 		
 		xfer_time_usecs = xfer_time_usecs/num_of_iterations;
 		if( rank == 0) {
-			printf("[%s]: avg xfer time: size=%d iters=[%d] avg_latency=%lf usecs\n", argv[0], msg_size, num_of_iterations, xfer_time_usecs);
+			printf("[%s]: avg xfer time: size=%d iters=[%d] avg_latency=%lf usecs min_latency=%lf usecs max_latency=%lf usecs std_dev=%lf \n", argv[0], msg_size, num_of_iterations, xfer_time_usecs, min_latency, max_latency, deviation
+			);
 		}
 	}
 

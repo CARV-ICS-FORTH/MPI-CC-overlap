@@ -8,6 +8,7 @@ typedef struct input_param {
 	int msg_bytes;
 	double t_comm_pure_avg;
 	double t_comm_pure_max;
+	int num_of_iterations;
 } t_input_params;
 
 #define call_mpi( func, ...) { 											\
@@ -95,7 +96,7 @@ void test_compute_emulation(void) {
 
 int extract_t_comm_pure(int argc, char** argv, t_input_params* input_params) {
 	
-	if( argc != 4 ) {
+	if( argc < 4 ) {
 		fprintf(stderr, "error: not enough input arguments, average transfer time or msg size is missingg\n");
 		return -1.0;
 	}
@@ -113,10 +114,17 @@ int extract_t_comm_pure(int argc, char** argv, t_input_params* input_params) {
 
 	input_params->t_comm_pure_max = strtod(argv[3], NULL);
 	if( input_params->t_comm_pure_max == 0 ) {
-		fprintf(stderr, "error: invalid input max transfer time = [%s]\n", argv[2] );
+		fprintf(stderr, "error: invalid input max transfer time = [%s]\n", argv[3] );
 		return -1.0;
 	}
-
+	if (argc == 5){
+		input_params->num_of_iterations = atoi(argv[4]);
+		if( input_params->num_of_iterations <= 0 ) {
+			fprintf(stderr, "error: invalid input num_of_iterations. Default value (1000) will be used = [%s]\n", argv[4] );
+			input_params->num_of_iterations = -1;
+		}
+		
+	}
 	
 	return 0;
 }
@@ -132,7 +140,7 @@ bool inserted_computation_affects_comm_time(double avg_comm_time_with_comp, doub
 	}
 }
 
-double comp_comm_overlap(int rank, int msg_size, double t_comm_pure_avg) {
+double comp_comm_overlap(int rank, int msg_size, double t_comm_pure_avg, int input_num_of_iterations) {
 
 	int res, dest, tag, num_of_iterations, iteration, warmup_iterations, tcomp_probing_iter;
 	short global_bench_termination, local_bench_termination;
@@ -142,8 +150,10 @@ double comp_comm_overlap(int rank, int msg_size, double t_comm_pure_avg) {
 	double t_overall, t_overall_tmp, compute_time_incr_step, t_comp_pure, clock_gettime_call_dur;
 	double last_comp_inserted, cco_ratio, additional_compute_time;
 	MPI_Request issend_request;
-
-	num_of_iterations = 1000;
+	if (input_num_of_iterations > 0)
+		num_of_iterations = input_num_of_iterations;
+	else
+		num_of_iterations = 1000;
 	t_comp_pure = 0.0;
 	warmup_iterations=100;
 	cco_ratio = -1.0;
@@ -256,6 +266,7 @@ int main(int argc, char** argv) {
 	int res, size, proc_name_len, rank;
 	char hostname[MPI_MAX_PROCESSOR_NAME];
 	t_input_params input_params;
+	input_params.num_of_iterations = 0;
 	double cco_ratio;
 
 	cco_ratio = 0.0;
@@ -270,7 +281,7 @@ int main(int argc, char** argv) {
 	call_mpi(MPI_Comm_rank, MPI_COMM_WORLD, &rank);
 	call_mpi(MPI_Get_processor_name, hostname, &proc_name_len);
 	
-	cco_ratio = comp_comm_overlap(rank, input_params.msg_bytes, input_params.t_comm_pure_avg);
+	cco_ratio = comp_comm_overlap(rank, input_params.msg_bytes, input_params.t_comm_pure_avg, input_params.num_of_iterations);
 	if( rank == 0 ) {
 		printf("size=%d cco_ratio=%lf\n",  input_params.msg_bytes, cco_ratio);
 	}

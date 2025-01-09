@@ -35,8 +35,15 @@ int main(int argc, char** argv) {
 	MPI_Request issend_request;
 	struct timespec t_start, t_end;
 	double xfer_time_usecs;
-
-	num_of_iterations = 10000;
+	
+	if (argc >= 2)
+		num_of_iterations = atoi(argv[1]);
+	else
+		num_of_iterations = 1000;
+	if(num_of_iterations < 0){
+		fprintf(stderr, "error: invalid input num_of_iterations  = [%s] . Default value (1000) will be used\n", argv[1] );
+		num_of_iterations = 1000;
+	}
 	warmup_iterations = 100;
 	msg_buf = (char*)malloc( sizeof(char)*MAX_MSG_SIZE );
 	for(iteration=0; iteration<MAX_MSG_SIZE; ++iteration) {

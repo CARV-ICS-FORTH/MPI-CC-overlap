@@ -5,7 +5,7 @@ max_msg_size = 4*1024*1024
 
 def read_and_parse_config():
 
-	input_params = {'mpi_path':None, 'num_of_mpiruns':None, 'num_of_iterations':None, 'max_msg_size':None, 'noise_threshold':None, 'mpirun_args':None}
+	input_params = {'mpi_path':None, 'num_of_mpiruns':None, 'num_of_iterations':None, 'num_of_benchmark_runs':None, 'max_msg_size':None, 'noise_threshold':None, 'mpirun_args':None}
 	# print(input_params)
 
 	input_params_keys = input_params.keys()
@@ -45,7 +45,7 @@ def read_and_parse_config():
 		if input_params[key] == None:
 			print("error: input configuration parameter ", key, "is missing")
 			sys.exit(1)
-		if( key == "num_of_mpiruns" or key == "num_of_iterations" or key == "max_msg_size" ):
+		if( key == "num_of_mpiruns" or key == "num_of_iterations" or key == "max_msg_size" or key == "num_of_benchmark_runs" ):
 			if( input_params[key].isnumeric() == False ):
 				print("error: input configuration parameter ", key, "requires integer values")
 				sys.exit(1)
@@ -63,7 +63,7 @@ def read_and_parse_config():
 	if( os.path.exists(makefile_fname) == False ):
 		print("File:",  makefile_fname, "not found")
 		sys.exit(1)
-	cmd = "make all mpicc=" + input_params["mpi_path"] + "bin/mpicc "
+	cmd = "make all mpicc=" + input_params["mpi_path"] + "bin/mpicc -lm "
 	try:
 		p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	except OSError:
@@ -115,7 +115,7 @@ def single_benchmark_run(input_params, benchmark_name):
 	else:
 		pass # no file missing
 
-	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname
+	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname + " " + input_params["num_of_iterations"] + " " + input_params["num_of_benchmark_runs"]
 	#print(cmd)
 
 	try:
@@ -135,7 +135,6 @@ def single_benchmark_run(input_params, benchmark_name):
 	else:
 		pass
 		#print(p_stderr)
-
 	p_stdout_entries = p_stdout.splitlines()
 	p_stderr_entries = p_stderr.splitlines()
 	xfer_times_array = []
@@ -151,6 +150,9 @@ def single_benchmark_run(input_params, benchmark_name):
 		tokens = entry.decode('ascii').split()
 		msg_size = -1
 		avg_latency = -1.0
+		min_latency = -1.0
+		max_latency = -1.0
+		std_dev     = -1.0
 		values_found = 0
 		
 		for token in tokens:
@@ -165,11 +167,25 @@ def single_benchmark_run(input_params, benchmark_name):
 				avg_latency_tokens = token.split("=")
 				avg_latency = float(avg_latency_tokens[1])
 				values_found = values_found + 1
-				
-
-		if values_found == 2:
+			ret = token.find("min_latency")
+			if( ret == 0 ):
+				min_latency_tokens = token.split("=")
+				min_latency = float(min_latency_tokens[1])
+				values_found = values_found + 1	 
+			ret = token.find("max_latency")
+			if( ret == 0 ):
+				max_latency_tokens = token.split("=")
+				max_latency = float(max_latency_tokens[1])
+				values_found = values_found + 1	
+			ret = token.find("std_dev")
+			if( ret == 0 ):
+				std_dev_tokens = token.split("=")
+				std_dev = float(std_dev_tokens[1])
+				values_found = values_found + 1	
+		if values_found >= 2:
 			xfer_times_dict[msg_size] = avg_latency
-
+		if values_found == 5:
+			print("Noise Assessment Benchmark: avg_latency=", str(avg_latency), " usecs, min_latency=", str(min_latency), " usecs, max_latency=", str(max_latency), "usecs std_dev=", str(std_dev))
 
 	# print(xfer_times_dict)
 	return xfer_times_dict
@@ -187,7 +203,7 @@ def mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_siz
 	else:
 		pass # no file missing
 
-	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
+	cmd = mpirun_fname + " " + input_params["mpirun_args"] + " " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time) + " "+ input_params["num_of_iterations"] + " " + input_params["num_of_benchmark_runs"]
 	# cmd = mpirun_fname + " -np 2 " + binary_fname + " " + str(msg_size) + " " + str(avg_xfer_time) + " " + str(max_xfer_time)
 	#print(cmd)
 	
@@ -321,6 +337,7 @@ def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
 
 	print_bench_banner("\nComp-comm overlap for various message sizes")
 	num_of_distinct_mpiruns = int(input_params["num_of_mpiruns"] )
+	num_of_iterations = int(input_params["num_of_iterations"])
 	for msg_size in xfer_times_per_run_dict.keys():
 		# print("\tMsg size considered:", msg_size)
 		avg_xfer_time = statistics.mean(xfer_times_per_run_dict[msg_size])
