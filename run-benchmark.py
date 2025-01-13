@@ -185,7 +185,7 @@ def single_benchmark_run(input_params, benchmark_name):
 		if values_found >= 2:
 			xfer_times_dict[msg_size] = avg_latency
 		if values_found == 5:
-			print("Noise Assessment Benchmark: avg_latency=", str(avg_latency), " usecs, min_latency=", str(min_latency), " usecs, max_latency=", str(max_latency), "usecs std_dev=", str(std_dev))
+			pass#print("Noise Assessment Benchmark: avg_latency=", str(avg_latency), " usecs, min_latency=", str(min_latency), " usecs, max_latency=", str(max_latency), "usecs std_dev=", str(std_dev))
 
 	# print(xfer_times_dict)
 	return xfer_times_dict
@@ -342,20 +342,25 @@ def comp_comm_overlap_ratio_benchmark(input_params, xfer_times_per_run_dict):
 		# print("\tMsg size considered:", msg_size)
 		avg_xfer_time = statistics.mean(xfer_times_per_run_dict[msg_size])
 		max_xfer_time = max(xfer_times_per_run_dict[msg_size])
+		min_xfer_time = min(xfer_times_per_run_dict[msg_size])
+		stdev_xfer_time = statistics.stdev(xfer_times_per_run_dict[msg_size])
 		avg_overlap_ratio = 0
 		
 
 		#if( msg_size == 16384):
 		# 	print(msg_size, avg_xfer_time, max_xfer_time);
-
+		ratio_list = []
 		for mpirun_i in range(0, num_of_distinct_mpiruns) :
 			benchmark_name = os.getcwd() + "/mpi-comp-comm-overlap-sender-side.out"
 			ratio = mpi_comm_comp_overlap_multiple_mpiruns(input_params, benchmark_name, msg_size, avg_xfer_time, max_xfer_time)
 			
 			avg_overlap_ratio = avg_overlap_ratio + ratio
-
+			ratio_list.append(ratio)
 		avg_overlap_ratio = avg_overlap_ratio/num_of_distinct_mpiruns
-		print("Msg size(bytes)=", msg_size, " average comp-comm overlap ratio", numpy.around(avg_overlap_ratio,decimals=2) )
+		max_ratio = max(ratio_list)
+		min_ratio = min(ratio_list)
+		stdev = statistics.stdev(ratio_list)
+		print("Msg size(bytes)=", msg_size, "avg_xfer_time = ", numpy.around(avg_xfer_time, decimals=2), "(min, max time)= (", numpy.around(min_xfer_time,decimals=2),",", numpy.around(max_xfer_time,decimals=2),") stdev of xfers=", numpy.around(stdev_xfer_time, decimals=5), "\n average comp-comm overlap ratio", numpy.around(avg_overlap_ratio,decimals=2), "(min, max ratio) = (",  numpy.around(min_ratio, decimals=2),",",  numpy.around(max_ratio,decimals=2), ") stdev of ratios = ",  numpy.around(stdev, decimals=5) )
 		
 
 # main
